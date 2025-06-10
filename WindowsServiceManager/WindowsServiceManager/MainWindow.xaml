@@ -9,37 +9,65 @@
     Title="Windows Service Manager">
 
     <StackPanel Padding="20" Spacing="10">
-        <TextBlock Text="Windows Service Manager" FontSize="24" FontWeight="Bold"/>
-        <TextBox x:Name="SearchBox" PlaceholderText="Search by service name..." TextChanged="SearchBox_TextChanged"/>
-        <Button Content="Refresh Services" Click="RefreshServices_Click"/>
 
-        <ListView x:Name="ServiceListView" Height="500" SelectionMode="Single">
-            <ListView.Header>
-                <Grid ColumnDefinitions="1*,1*,2*,1*,1*">
-                    <TextBlock Text="Service Name" Grid.Column="0"/>
-                    <TextBlock Text="Status" Grid.Column="1"/>
-                    <TextBlock Text="Description" Grid.Column="2"/>
-                    <TextBlock Text="Startup Type" Grid.Column="3"/>
-                    <TextBlock Text="Log On As" Grid.Column="4"/>
-                </Grid>
-            </ListView.Header>
+        <TextBox x:Name="SearchBox"
+                 PlaceholderText="Search by service name..."
+                 TextChanged="SearchBox_TextChanged"
+                 Margin="0,0,0,10"/>
+
+        <Button Content="Refresh Services"
+                Click="RefreshServices_Click"
+                Margin="0,0,0,10"
+                Background="LightGray"
+                Foreground="Black"/>
+
+        <Grid ColumnDefinitions="1*,1*,2*,1*,1*"
+              Padding="5"
+              Background="LightGray"
+              Margin="0,0,0,5">
+            <TextBlock Text="Service Name" Grid.Column="0" FontWeight="Bold"/>
+            <TextBlock Text="Status" Grid.Column="1" FontWeight="Bold"/>
+            <TextBlock Text="Description" Grid.Column="2" FontWeight="Bold"/>
+            <TextBlock Text="Startup Type" Grid.Column="3" FontWeight="Bold"/>
+            <TextBlock Text="Log On As" Grid.Column="4" FontWeight="Bold"/>
+        </Grid>
+
+        <ListView x:Name="ServiceListView"
+                  Height="500"
+                  SelectionMode="Single">
+
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ServiceModel">
-                    <Grid ColumnDefinitions="1*,1*,2*,1*,1*">
+                    <Grid ColumnDefinitions="1*,1*,2*,1*,1*" Padding="5">
                         <TextBlock Text="{x:Bind ServiceName}" Grid.Column="0"/>
-                        <TextBlock Text="{x:Bind Status}" Grid.Column="1"/>
+                        <TextBlock Text="{x:Bind Status}"
+                                   Foreground="{x:Bind StatusColor}"
+                                   Grid.Column="1"
+                                   RightTapped="Status_RightTapped"/>
                         <TextBlock Text="{x:Bind Description}" Grid.Column="2"/>
-                        <TextBlock Text="{x:Bind StartupType}" Grid.Column="3"/>
+                        <TextBlock Text="{x:Bind StartupType}"
+                                   Grid.Column="3"
+                                   Foreground="Blue"
+                                   RightTapped="StartupType_RightTapped"/>
                         <TextBlock Text="{x:Bind LogOnAs}" Grid.Column="4"/>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
-            <Button Content="Start" Click="StartService_Click"/>
-            <Button Content="Stop" Click="StopService_Click"/>
-            <Button Content="Pause" Click="PauseService_Click"/>
+        <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="10"
+                    Margin="0,10,0,0">
+            <Button Content="Start" Click="StartService_Click" Width="75"/>
+            <Button Content="Stop" Click="StopService_Click" Width="75"/>
+            <Button Content="Pause" Click="PauseService_Click" Width="75"/>
         </StackPanel>
     </StackPanel>
 </Window>

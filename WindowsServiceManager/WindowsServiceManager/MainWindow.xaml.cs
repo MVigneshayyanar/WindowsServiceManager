@@ -1,7 +1,10 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using System.Collections.ObjectModel;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
+using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Management;
 using System.ServiceProcess;
@@ -11,146 +14,224 @@ namespace WindowsServiceManager
 {
     public sealed partial class MainWindow : Window
     {
-        private ObservableCollection<ServiceModel> AllServices { get; set; } = new();
-        private ObservableCollection<ServiceModel> FilteredServices { get; set; } = new();
+        private ObservableCollection<ServiceModel> AllServices = new();
+        private ObservableCollection<ServiceModel> FilteredServices = new();
 
         public MainWindow()
         {
             this.InitializeComponent();
-            _ = LoadServicesAsync();  // Load services on startup asynchronously
+            _ = LoadServicesAsync();
         }
 
         private async Task LoadServicesAsync()
         {
-            ServiceListView.ItemsSource = null; // Clear current list while loading
-
-            var services = await Task.Run(() =>
+            ServiceListView.ItemsSource = null;
+            var list = await Task.Run(() =>
             {
-                var allServices = new List<ServiceModel>();
-                var wmiInfo = FetchWmiServiceInfo();
-
+                var tmp = new List<ServiceModel>();
+                var wmi = FetchWmiServiceInfo();
                 foreach (var sc in ServiceController.GetServices())
                 {
-                    wmiInfo.TryGetValue(sc.ServiceName, out var info);
-
-                    allServices.Add(new ServiceModel
+                    using (sc)
                     {
-                        ServiceName = sc.ServiceName,
-                        Description = sc.DisplayName,
-                        Status = sc.Status.ToString(),
-                        StartupType = info.StartupType ?? "Unknown",
-                        LogOnAs = info.LogOnAs ?? "Unknown"
-                    });
+                        wmi.TryGetValue(sc.ServiceName, out var info);
+                        tmp.Add(new ServiceModel
+                        {
+                            ServiceName = sc.ServiceName,
+                            Description = sc.DisplayName,
+                            Status = sc.Status.ToString(),
+                            StartupType = info.StartupType ?? "Unknown",
+                            LogOnAs = info.LogOnAs ?? "Unknown"
+                        });
+                    }
                 }
-
-                return allServices;
+                return tmp;
             });
 
-            AllServices = new ObservableCollection<ServiceModel>(services);
-            FilteredServices = new ObservableCollection<ServiceModel>(services);
-
+            AllServices = new ObservableCollection<ServiceModel>(list);
+            FilteredServices = new ObservableCollection<ServiceModel>(list);
             ServiceListView.ItemsSource = FilteredServices;
         }
 
         private Dictionary<string, (string StartupType, string LogOnAs)> FetchWmiServiceInfo()
         {
-            var dict = new Dictionary<string, (string StartupType, string LogOnAs)>();
-
+            var dict = new Dictionary<string, (string, string)>();
             try
             {
-                var searcher = new ManagementObjectSearcher("SELECT Name, StartMode, StartName FROM Win32_Service");
-
-                foreach (ManagementObject mo in searcher.Get())
+                var qs = new ManagementObjectSearcher("SELECT Name,StartMode,StartName FROM Win32_Service");
+                foreach (ManagementObject mo in qs.Get())
                 {
-                    string name = mo["Name"]?.ToString() ?? "";
-                    string startMode = mo["StartMode"]?.ToString() ?? "Unknown";
-                    string startName = mo["StartName"]?.ToString() ?? "Unknown";
-
-                    dict[name] = (startMode, startName);
+                    var name = mo["Name"]?.ToString() ?? "";
+                    var mode = mo["StartMode"]?.ToString() ?? "Unknown";
+                    var logon = mo["StartName"]?.ToString() ?? "Unknown";
+                    dict[name] = (mode, logon);
                 }
             }
-            catch
-            {
-                // You can add logging here if needed
-            }
-
+            catch { }
             return dict;
         }
 
-        private void RefreshServices_Click(object sender, RoutedEventArgs e)
-        {
-            _ = LoadServicesAsync();  // Reload list asynchronously on refresh click
-        }
+        private async void RefreshServices_Click(object sender, RoutedEventArgs e) =>
+            await LoadServicesAsync();
 
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            var query = SearchBox.Text?.Trim().ToLower() ?? "";
-            var filtered = AllServices.Where(s => s.ServiceName.ToLower().Contains(query));
-            FilteredServices = new ObservableCollection<ServiceModel>(filtered);
+            var q = SearchBox.Text?.Trim().ToLower() ?? "";
+            FilteredServices = new ObservableCollection<ServiceModel>(
+                AllServices.Where(s => s.ServiceName?.ToLower().Contains(q) == true));
             ServiceListView.ItemsSource = FilteredServices;
         }
 
-        private void StartService_Click(object sender, RoutedEventArgs e)
+        private async void StartService_Click(object sender, RoutedEventArgs e)
         {
-            if (ServiceListView.SelectedItem is ServiceModel model)
+            if (ServiceListView.SelectedItem is ServiceModel m)
             {
-                try
+                var success = await RunServiceCommandAsync($"sc start \"{m.ServiceName}\"");
+                if (!success)
+                    await ShowMessageAsync("Failed to start service. Try running the app as Administrator.");
+                await LoadServicesAsync();
+            }
+        }
+
+        private async void StopService_Click(object sender, RoutedEventArgs e)
+        {
+            if (ServiceListView.SelectedItem is ServiceModel m)
+            {
+                var success = await RunServiceCommandAsync($"sc stop \"{m.ServiceName}\"");
+                if (!success)
+                    await ShowMessageAsync("Failed to stop service. Try running the app as Administrator.");
+                await LoadServicesAsync();
+            }
+        }
+
+        private async void PauseService_Click(object sender, RoutedEventArgs e)
+        {
+            if (ServiceListView.SelectedItem is ServiceModel m)
+            {
+                var success = await RunServiceCommandAsync($"sc pause \"{m.ServiceName}\"");
+                if (!success)
+                    await ShowMessageAsync("Failed to pause service. Try running the app as Administrator.");
+                await LoadServicesAsync();
+            }
+        }
+
+        private async void Status_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is ServiceModel svc)
+            {
+                var menu = new MenuFlyout();
+
+                var start = new MenuFlyoutItem { Text = "Start" };
+                start.Click += async (_, __) =>
                 {
-                    var sc = new ServiceController(model.ServiceName);
-                    if (sc.Status == ServiceControllerStatus.Stopped)
+                    await RunServiceCommandAsync($"sc start \"{svc.ServiceName}\"");
+                    await LoadServicesAsync();
+                };
+                menu.Items.Add(start);
+
+                var stop = new MenuFlyoutItem { Text = "Stop" };
+                stop.Click += async (_, __) =>
+                {
+                    await RunServiceCommandAsync($"sc stop \"{svc.ServiceName}\"");
+                    await LoadServicesAsync();
+                };
+                menu.Items.Add(stop);
+
+                var pause = new MenuFlyoutItem { Text = "Pause" };
+                pause.Click += async (_, __) =>
+                {
+                    await RunServiceCommandAsync($"sc pause \"{svc.ServiceName}\"");
+                    await LoadServicesAsync();
+                };
+                menu.Items.Add(pause);
+
+                menu.ShowAt(tb, new FlyoutShowOptions { Position = e.GetPosition(tb) });
+            }
+        }
+
+        private async void StartupType_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is ServiceModel svc)
+            {
+                var dlg = new ContentDialog
+                {
+                    Title = $"Change Startup Type — {svc.ServiceName}",
+                    CloseButtonText = "Cancel",
+                    PrimaryButtonText = "Apply",
+                    XamlRoot = this.Content.XamlRoot
+                };
+                var opts = new List<string> { "Automatic", "Manual", "Disabled" };
+                var combo = new ComboBox
+                {
+                    ItemsSource = opts,
+                    SelectedItem = svc.StartupType,
+                    Margin = new Thickness(0, 10, 0, 0)
+                };
+                dlg.Content = combo;
+                if (await dlg.ShowAsync() == ContentDialogResult.Primary)
+                {
+                    var newType = combo.SelectedItem as string;
+                    if (!string.IsNullOrWhiteSpace(newType) && newType != svc.StartupType)
                     {
-                        sc.Start();
-                        sc.WaitForStatus(ServiceControllerStatus.Running, System.TimeSpan.FromSeconds(10));
-                        _ = LoadServicesAsync();
+                        if (await ChangeStartupTypeAsync(svc.ServiceName!, newType))
+                            await LoadServicesAsync();
+                        else
+                            await ShowMessageAsync("Failed: run app as Administrator.");
                     }
-                }
-                catch
-                {
-                    // Handle or log exceptions as needed
                 }
             }
         }
 
-        private void StopService_Click(object sender, RoutedEventArgs e)
+        private async Task<bool> ChangeStartupTypeAsync(string serviceName, string? startupType)
         {
-            if (ServiceListView.SelectedItem is ServiceModel model)
+            if (string.IsNullOrWhiteSpace(startupType)) return false;
+            var mode = startupType switch
             {
-                try
-                {
-                    var sc = new ServiceController(model.ServiceName);
-                    if (sc.Status == ServiceControllerStatus.Running)
-                    {
-                        sc.Stop();
-                        sc.WaitForStatus(ServiceControllerStatus.Stopped, System.TimeSpan.FromSeconds(10));
-                        _ = LoadServicesAsync();
-                    }
-                }
-                catch
-                {
-                    // Handle or log exceptions as needed
-                }
+                "Automatic" => "auto",
+                "Manual" => "demand",
+                "Disabled" => "disabled",
+                _ => null
+            };
+            if (mode is null) return false;
+
+            var cmd = $"sc config \"{serviceName}\" start= {mode}";
+            return await RunServiceCommandAsync(cmd);
+        }
+
+        private async Task<bool> RunServiceCommandAsync(string command)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c {command}",
+                Verb = "runas", // Ensure admin rights
+                UseShellExecute = true,
+                CreateNoWindow = true
+            };
+
+            try
+            {
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc == null) return false;
+                await proc.WaitForExitAsync();
+                return proc.ExitCode == 0;
+            }
+            catch
+            {
+                return false;
             }
         }
 
-        private void PauseService_Click(object sender, RoutedEventArgs e)
+        private async Task ShowMessageAsync(string msg)
         {
-            if (ServiceListView.SelectedItem is ServiceModel model)
+            var dlg = new ContentDialog
             {
-                try
-                {
-                    var sc = new ServiceController(model.ServiceName);
-                    if (sc.CanPauseAndContinue && sc.Status == ServiceControllerStatus.Running)
-                    {
-                        sc.Pause();
-                        sc.WaitForStatus(ServiceControllerStatus.Paused, System.TimeSpan.FromSeconds(10));
-                        _ = LoadServicesAsync();
-                    }
-                }
-                catch
-                {
-                    // Handle or log exceptions as needed
-                }
-            }
+                Title = "Notification",
+                Content = msg,
+                CloseButtonText = "OK",
+                XamlRoot = this.Content.XamlRoot
+            };
+            await dlg.ShowAsync();
         }
     }
 }
