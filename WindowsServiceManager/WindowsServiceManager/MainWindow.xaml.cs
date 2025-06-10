@@ -56,6 +56,7 @@ namespace WindowsServiceManager
             ServiceListView.ItemsSource = FilteredServices;
         }
 
+
         private Dictionary<string, (string StartupType, string LogOnAs)> FetchWmiServiceInfo()
         {
             var dict = new Dictionary<string, (string, string)>();
@@ -313,6 +314,88 @@ namespace WindowsServiceManager
 
             FilteredServices = new ObservableCollection<ServiceModel>(sorted);
             ServiceListView.ItemsSource = FilteredServices;
+        }
+
+        private async void ServiceName_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.DataContext is ServiceModel svc)
+            {
+                var query = $"SELECT * FROM Win32_Service WHERE Name = '{svc.ServiceName}'";
+                using var searcher = new ManagementObjectSearcher(query);
+                var result = searcher.Get().Cast<ManagementObject>().FirstOrDefault();
+
+                if (result is null)
+                {
+                    await ShowMessageAsync("Unable to fetch detailed service info.");
+                    return;
+                }
+
+                string Format(bool val) => val ? "Yes" : "No";
+
+                var details = $"""
+                Identification & Naming
+                ----------------------------------------------------------------
+                Service Name     : {result["Name"]}
+                Display Name     : {result["DisplayName"]}
+                Caption          : {result["Caption"]}
+                Description      : {result["Description"]}
+
+                Status & Control
+                ----------------------------------------------------------------
+                State            : {result["State"]}
+                Status           : {result["Status"]}
+                Started          : {result["Started"]}
+                Accept Pause     : {Format((bool)result["AcceptPause"])}
+                Accept Stop      : {Format((bool)result["AcceptStop"])}
+                CheckPoint       : {result["CheckPoint"]}
+                WaitHint         : {result["WaitHint"]}
+
+                Startup Configuration
+                ----------------------------------------------------------------
+                Start Mode       : {result["StartMode"]}
+                Start Account    : {result["StartName"]}
+                Error Control    : {result["ErrorControl"]}
+                Desktop Interact : {Format((bool)result["DesktopInteract"])}
+
+                Execution Details
+                ----------------------------------------------------------------
+                Path             : {result["PathName"]}
+                Service Type     : {result["ServiceType"]}
+                Process ID       : {result["ProcessId"]}
+                Tag ID           : {result["TagId"]}
+
+                Failure Info
+                ----------------------------------------------------------------
+                Exit Code        : {result["ExitCode"]}
+                Service ExitCode : {result["ServiceSpecificExitCode"]}
+
+                System Metadata
+                ----------------------------------------------------------------
+                System Name      : {result["SystemName"]}
+                Install Date     : {result["InstallDate"]}
+                """;
+
+                var dlg = new ContentDialog
+                {
+                    Title = $"{result["Name"]} — Detailed Info",
+                    Content = new ScrollViewer
+                    {
+                        Content = new TextBlock
+                        {
+                            Text = details,
+                            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
+
+                            TextWrapping = TextWrapping.Wrap
+                        },
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        MaxHeight = 500
+                    },
+                    CloseButtonText = "Close",
+                    XamlRoot = this.Content.XamlRoot
+                };
+
+                await dlg.ShowAsync();
+            }
         }
     }
 }

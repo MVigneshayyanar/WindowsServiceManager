@@ -21,16 +21,14 @@
                 Background="LightGray"
                 Foreground="Black"/>
 
-        <Grid ColumnDefinitions="1*,1*,2*,1*,1*"
-              Padding="5"
-              Background="LightGray"
-              Margin="0,0,0,5">
-            <TextBlock Text="Service Name" Grid.Column="0" FontWeight="Bold" Tag="ServiceName" Tapped="SortColumn_Tapped"/>
-            <TextBlock Text="Status" Grid.Column="1" FontWeight="Bold" Tag="Status" Tapped="SortColumn_Tapped"/>
-            <TextBlock Text="Description" Grid.Column="2" FontWeight="Bold" Tag="Description" Tapped="SortColumn_Tapped"/>
-            <TextBlock Text="Startup Type" Grid.Column="3" FontWeight="Bold" Tag="StartupType" Tapped="SortColumn_Tapped"/>
-            <TextBlock Text="Log On As" Grid.Column="4" FontWeight="Bold" Tag="LogOnAs" Tapped="SortColumn_Tapped"/>
+        <Grid ColumnDefinitions="1*,1*,2*,1*,1*" Padding="5" Background="LightGray" Margin="0,0,0,5" >
+            <TextBlock Text="Service Name" Grid.Column="0" FontWeight="Bold" Foreground="Black" Tag="ServiceName" Tapped="SortColumn_Tapped"/>
+            <TextBlock Text="Status" Grid.Column="1" FontWeight="Bold" Foreground="Black" Tag="Status" Tapped="SortColumn_Tapped"/>
+            <TextBlock Text="Description" Grid.Column="2" FontWeight="Bold" Foreground="black" Tag="Description" Tapped="SortColumn_Tapped"/>
+            <TextBlock Text="Startup Type" Grid.Column="3" FontWeight="Bold" Foreground="Black" Tag="StartupType" Tapped="SortColumn_Tapped"/>
+            <TextBlock Text="Log On As" Grid.Column="4" FontWeight="Bold" Foreground="Black" Tag="LogOnAs" Tapped="SortColumn_Tapped"/>
         </Grid>
+
 
         <ListView x:Name="ServiceListView"
                   Height="650"
@@ -45,7 +43,8 @@
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ServiceModel">
                     <Grid ColumnDefinitions="1*,1*,2*,1*,1*" Padding="5">
-                        <TextBlock Text="{x:Bind ServiceName}" Grid.Column="0"/>
+                        <TextBlock Text="{x:Bind ServiceName}" Grid.Column="0" DoubleTapped="ServiceName_DoubleTapped"/>
+
                         <TextBlock Text="{x:Bind Status}"
                                    Foreground="{x:Bind StatusColor}"
                                    Grid.Column="1"
@@ -53,7 +52,7 @@
                         <TextBlock Text="{x:Bind Description}" Grid.Column="2"/>
                         <TextBlock Text="{x:Bind StartupType}"
                                    Grid.Column="3"
-                                   Foreground="Blue"
+                                   Foreground="deepSkyBlue"
                                    RightTapped="StartupType_RightTapped"/>
                         <TextBlock Text="{x:Bind LogOnAs}" Grid.Column="4"/>
                     </Grid>
@@ -61,4 +60,4 @@
             </ListView.ItemTemplate>
         </ListView>
     </StackPanel>
-</Window>
+</Window>
