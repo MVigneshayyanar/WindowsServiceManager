@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Management;
 using System.ServiceProcess;
@@ -71,9 +72,6 @@ namespace WindowsServiceManager
             return dict;
         }
 
-        private async void RefreshServices_Click(object sender, RoutedEventArgs e) =>
-            await LoadServicesAsync();
-
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             var q = SearchBox.Text?.Trim().ToLower() ?? "";
@@ -82,36 +80,74 @@ namespace WindowsServiceManager
             ServiceListView.ItemsSource = FilteredServices;
         }
 
-        private async void StartService_Click(object sender, RoutedEventArgs e)
+        private async void RefreshServices_Click(object sender, RoutedEventArgs e) =>
+            await LoadServicesAsync();
+
+        private async void StartService_Click(object sender, RoutedEventArgs e) =>
+            await ExecuteServiceCommand("start");
+
+        private async void StopService_Click(object sender, RoutedEventArgs e) =>
+            await ExecuteServiceCommand("stop");
+
+        private async void PauseService_Click(object sender, RoutedEventArgs e) =>
+            await ExecuteServiceCommand("pause");
+
+        private async Task ExecuteServiceCommand(string action)
         {
             if (ServiceListView.SelectedItem is ServiceModel m)
             {
-                var success = await RunServiceCommandAsync($"sc start \"{m.ServiceName}\"");
-                if (!success)
-                    await ShowMessageAsync("Failed to start service. Try running the app as Administrator.");
+                var expected = action switch
+                {
+                    "start" => ServiceControllerStatus.Running,
+                    "stop" => ServiceControllerStatus.Stopped,
+                    "pause" => ServiceControllerStatus.Paused,
+                    _ => ServiceControllerStatus.Stopped
+                };
+
+                var ok = await RunScCommandAsync(m.ServiceName!, action, expected);
+                if (!ok)
+                    await ShowMessageAsync($"Failed to {action} the service. Try running the app as Administrator.");
                 await LoadServicesAsync();
             }
         }
 
-        private async void StopService_Click(object sender, RoutedEventArgs e)
+        private async Task<bool> RunScCommandAsync(string serviceName, string action, ServiceControllerStatus expectedStatus)
         {
-            if (ServiceListView.SelectedItem is ServiceModel m)
+            var psi = new ProcessStartInfo
             {
-                var success = await RunServiceCommandAsync($"sc stop \"{m.ServiceName}\"");
-                if (!success)
-                    await ShowMessageAsync("Failed to stop service. Try running the app as Administrator.");
-                await LoadServicesAsync();
-            }
-        }
+                FileName = "cmd.exe",
+                Arguments = $"/c sc {action} \"{serviceName}\"",
+                UseShellExecute = true,
+                CreateNoWindow = true,
+                Verb = "runas"
+            };
 
-        private async void PauseService_Click(object sender, RoutedEventArgs e)
-        {
-            if (ServiceListView.SelectedItem is ServiceModel m)
+            try
             {
-                var success = await RunServiceCommandAsync($"sc pause \"{m.ServiceName}\"");
-                if (!success)
-                    await ShowMessageAsync("Failed to pause service. Try running the app as Administrator.");
-                await LoadServicesAsync();
+                using var proc = Process.Start(psi);
+                if (proc == null) return false;
+                await proc.WaitForExitAsync();
+
+                if (proc.ExitCode != 0)
+                    return false;
+
+                await Task.Delay(1000); // Allow time for status to change
+
+                using var controller = new ServiceController(serviceName);
+                for (int i = 0; i < 10; i++)
+                {
+                    controller.Refresh();
+                    if (controller.Status == expectedStatus)
+                        return true;
+                    await Task.Delay(500);
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error running sc {action}: {ex.Message}");
+                return false;
             }
         }
 
@@ -124,7 +160,7 @@ namespace WindowsServiceManager
                 var start = new MenuFlyoutItem { Text = "Start" };
                 start.Click += async (_, __) =>
                 {
-                    await RunServiceCommandAsync($"sc start \"{svc.ServiceName}\"");
+                    await RunScCommandAsync(svc.ServiceName!, "start", ServiceControllerStatus.Running);
                     await LoadServicesAsync();
                 };
                 menu.Items.Add(start);
@@ -132,7 +168,7 @@ namespace WindowsServiceManager
                 var stop = new MenuFlyoutItem { Text = "Stop" };
                 stop.Click += async (_, __) =>
                 {
-                    await RunServiceCommandAsync($"sc stop \"{svc.ServiceName}\"");
+                    await RunScCommandAsync(svc.ServiceName!, "stop", ServiceControllerStatus.Stopped);
                     await LoadServicesAsync();
                 };
                 menu.Items.Add(stop);
@@ -140,7 +176,7 @@ namespace WindowsServiceManager
                 var pause = new MenuFlyoutItem { Text = "Pause" };
                 pause.Click += async (_, __) =>
                 {
-                    await RunServiceCommandAsync($"sc pause \"{svc.ServiceName}\"");
+                    await RunScCommandAsync(svc.ServiceName!, "pause", ServiceControllerStatus.Paused);
                     await LoadServicesAsync();
                 };
                 menu.Items.Add(pause);
@@ -168,6 +204,7 @@ namespace WindowsServiceManager
                     Margin = new Thickness(0, 10, 0, 0)
                 };
                 dlg.Content = combo;
+
                 if (await dlg.ShowAsync() == ContentDialogResult.Primary)
                 {
                     var newType = combo.SelectedItem as string;
@@ -185,6 +222,7 @@ namespace WindowsServiceManager
         private async Task<bool> ChangeStartupTypeAsync(string serviceName, string? startupType)
         {
             if (string.IsNullOrWhiteSpace(startupType)) return false;
+
             var mode = startupType switch
             {
                 "Automatic" => "auto",
@@ -192,26 +230,21 @@ namespace WindowsServiceManager
                 "Disabled" => "disabled",
                 _ => null
             };
+
             if (mode is null) return false;
 
-            var cmd = $"sc config \"{serviceName}\" start= {mode}";
-            return await RunServiceCommandAsync(cmd);
-        }
-
-        private async Task<bool> RunServiceCommandAsync(string command)
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo
+            var psi = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = $"/c {command}",
-                Verb = "runas", // Ensure admin rights
+                Arguments = $"/c sc config \"{serviceName}\" start= {mode}",
+                Verb = "runas",
                 UseShellExecute = true,
                 CreateNoWindow = true
             };
 
             try
             {
-                using var proc = System.Diagnostics.Process.Start(psi);
+                using var proc = Process.Start(psi);
                 if (proc == null) return false;
                 await proc.WaitForExitAsync();
                 return proc.ExitCode == 0;
