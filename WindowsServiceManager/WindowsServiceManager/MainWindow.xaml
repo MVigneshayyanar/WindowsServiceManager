@@ -20,7 +20,9 @@
                 Margin="0,0,0,10"
                 Background="LightGray"
                 Foreground="Black"/>
-
+        
+        
+        
         <Grid ColumnDefinitions="1*,1*,2*,1*,1*" Padding="5" Background="LightGray" Margin="0,0,0,5" >
             <TextBlock Text="Service Name" Grid.Column="0" FontWeight="Bold" Foreground="Black" Tag="ServiceName" Tapped="SortColumn_Tapped"/>
             <TextBlock Text="Status" Grid.Column="1" FontWeight="Bold" Foreground="Black" Tag="Status" Tapped="SortColumn_Tapped"/>
