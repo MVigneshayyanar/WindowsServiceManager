@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace WindowsServiceManager
 {
-    public class ServiceModel
+    public class ServiceModel 
     {
         public string? ServiceName { get; set; }
         public string? Description { get; set; }

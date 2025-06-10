@@ -17,6 +17,8 @@ namespace WindowsServiceManager
     {
         private ObservableCollection<ServiceModel> AllServices = new();
         private ObservableCollection<ServiceModel> FilteredServices = new();
+        private string? lastSortedColumn = null;
+        private bool isAscending = true;
 
         public MainWindow()
         {
@@ -131,7 +133,7 @@ namespace WindowsServiceManager
                 if (proc.ExitCode != 0)
                     return false;
 
-                await Task.Delay(1000); // Allow time for status to change
+                await Task.Delay(1000);
 
                 using var controller = new ServiceController(serviceName);
                 for (int i = 0; i < 10; i++)
@@ -265,6 +267,52 @@ namespace WindowsServiceManager
                 XamlRoot = this.Content.XamlRoot
             };
             await dlg.ShowAsync();
+        }
+
+        private void SortColumn_Tapped(object sender, TappedRoutedEventArgs e)
+        {
+            if (sender is TextBlock tb && tb.Tag is string column)
+                SortServices(column);
+        }
+
+        private void SortServices(string column)
+        {
+            IEnumerable<ServiceModel> sorted;
+
+            if (lastSortedColumn == column)
+                isAscending = !isAscending;
+            else
+                isAscending = true;
+
+            lastSortedColumn = column;
+
+            sorted = column switch
+            {
+                "ServiceName" => isAscending
+                    ? FilteredServices.OrderBy(s => s.ServiceName)
+                    : FilteredServices.OrderByDescending(s => s.ServiceName),
+
+                "Status" => isAscending
+                    ? FilteredServices.OrderBy(s => s.Status)
+                    : FilteredServices.OrderByDescending(s => s.Status),
+
+                "Description" => isAscending
+                    ? FilteredServices.OrderBy(s => s.Description)
+                    : FilteredServices.OrderByDescending(s => s.Description),
+
+                "StartupType" => isAscending
+                    ? FilteredServices.OrderBy(s => s.StartupType)
+                    : FilteredServices.OrderByDescending(s => s.StartupType),
+
+                "LogOnAs" => isAscending
+                    ? FilteredServices.OrderBy(s => s.LogOnAs)
+                    : FilteredServices.OrderByDescending(s => s.LogOnAs),
+
+                _ => FilteredServices
+            };
+
+            FilteredServices = new ObservableCollection<ServiceModel>(sorted);
+            ServiceListView.ItemsSource = FilteredServices;
         }
     }
 }
